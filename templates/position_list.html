@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>投递职位 - 智能简历筛选系统</title>
+    <link rel="stylesheet" href="https://unpkg.com/element-plus@2.4.4/dist/index.css">
+    <script src="https://unpkg.com/vue@3.4.15/dist/vue.global.prod.js"></script>
+    <script src="https://unpkg.com/element-plus@2.4.4/dist/index.full.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #F0F2F5; }
+        .header { background: #1E2140; color: #fff; padding: 20px 0; }
+        .header-content { max-width: 1000px; margin: 0 auto; padding: 0 24px; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 22px; }
+        .header h1 span { color: #5B7FFF; }
+        .header a { color: #fff; text-decoration: none; font-size: 14px; }
+        .container { max-width: 1000px; margin: 40px auto; padding: 0 24px; }
+        .page-title { font-size: 24px; margin-bottom: 24px; color: #1A1D29; }
+        .position-card { background: #fff; border-radius: 14px; padding: 24px; margin-bottom: 20px; box-shadow: 0 2px 16px rgba(0,0,0,0.08); }
+        .position-card h2 { font-size: 18px; color: #1A1D29; margin-bottom: 12px; }
+        .position-card .desc { color: #6B7280; font-size: 14px; margin-bottom: 16px; line-height: 1.6; }
+        .position-card .keywords { margin-bottom: 16px; }
+        .keyword-tag { display: inline-block; padding: 4px 12px; background: rgba(91,127,255,0.1); color: #5B7FFF; border-radius: 20px; font-size: 13px; margin: 2px; }
+        .position-card .meta { font-size: 13px; color: #9CA3AF; margin-bottom: 16px; }
+        .el-button--primary { --el-button-bg-color: #5B7FFF; --el-button-border-color: #5B7FFF; }
+        .empty { text-align: center; padding: 60px; color: #9CA3AF; }
+        .upload-tip { background: #FEF3C7; border-radius: 10px; padding: 16px; margin-bottom: 20px; color: #92400E; font-size: 14px; }
+    </style>
+</head>
+<body>
+<div id="app">
+    <div class="header">
+        <div class="header-content">
+            <h1><span>⚙️</span> 智能简历筛选系统</h1>
+        </div>
+    </div>
+
+    <div class="container">
+        <h1 class="page-title">📋 招聘信息</h1>
+        <div class="upload-tip">💡 在下方选择您感兴趣的职位，上传简历即可自动匹配</div>
+
+        {% verbatim %}
+        <div v-if="positions.length === 0" class="empty">
+            <p>暂无招聘信息</p>
+        </div>
+
+        <div v-else v-for="pos in positions" :key="pos.id" class="position-card">
+            <h2>{{ pos.title }}</h2>
+            <p class="desc">{{ pos.description ? pos.description : '暂无职位描述' }}</p>
+            <div class="keywords">
+                <span v-for="kw in pos.keywords" :key="kw" class="keyword-tag">{{ kw }}</span>
+            </div>
+            <div class="meta">创建于 {{ pos.created_at }}</div>
+            <el-button type="primary" @click="openUpload(pos)">投递简历</el-button>
+        </div>
+        {% endverbatim %}
+    </div>
+
+    <!-- 上传弹窗 -->
+    <el-dialog v-model="showUpload" :title="'投递: ' + uploadPosTitle" width="480px">
+        <div style="margin-bottom:16px">
+            <el-input v-model="applicantName" placeholder="请输入您的姓名" clearable></el-input>
+        </div>
+        <div style="margin-bottom:16px">
+            <el-input v-model="applicantEmail" placeholder="请输入您的邮箱" clearable></el-input>
+        </div>
+        <div style="margin-bottom:16px">
+            <el-input v-model="applicantPhone" placeholder="请输入您的手机号" clearable></el-input>
+        </div>
+        <div>
+            <input type="file" ref="fileInput" accept=".pdf,.docx,.doc,.txt" @change="handleFileSelect" style="display:block">
+            <div style="color:#888;font-size:12px;margin-top:8px">支持 PDF、Word、TXT 格式</div>
+        </div>
+        <template #footer>
+            <el-button @click="showUpload=false">取消</el-button>
+            <el-button type="primary" @click="doUpload" :disabled="!selectedFile || !applicantName">提交</el-button>
+        </template>
+    </el-dialog>
+
+    <!-- 结果弹窗 -->
+    <el-dialog v-model="showResult" title="投递结果" width="420px">
+        {% verbatim %}
+        <div v-if="resultData">
+            <el-result
+                :icon="resultData.success ? 'success' : 'error'"
+                :title="resultData.success ? '投递成功！' : '投递失败'"
+                :sub-title="resultData.success ? '您的简历已收到，我们将尽快审核' : resultData.error"
+            >
+                <template #extra v-if="resultData.success">
+                    <div style="text-align:left;margin-top:20px">
+                        <p><strong>姓名：</strong>{{ resultData.name }}</p>
+                        <p><strong>匹配分：</strong><span :style="{color: resultData.score >= 70 ? '#059669' : resultData.score >= 40 ? '#D97706' : '#DC2626'}">{{ resultData.score }}分</span></p>
+                        <p><strong>匹配技能：</strong>{{ resultData.matched_keywords ? resultData.matched_keywords.join(', ') : '无' }}</p>
+                    </div>
+                </template>
+            </el-result>
+        </div>
+        {% endverbatim %}
+        <template #footer><el-button @click="showResult=false">关闭</el-button></template>
+    </el-dialog>
+</div>
+
+<script>
+const { createApp, ref, onMounted } = Vue;
+const app = createApp({
+    setup() {
+        const positions = ref([]);
+        const showUpload = ref(false);
+        const showResult = ref(false);
+        const uploadPosId = ref(null);
+        const uploadPosTitle = ref('');
+        const applicantName = ref('');
+        const applicantEmail = ref('');
+        const applicantPhone = ref('');
+        const selectedFile = ref(null);
+        const fileInput = ref(null);
+        const resultData = ref(null);
+
+        // Use positions from Django template context (already rendered server-side)
+        const pagePositions = [];
+        {% for p in positions %}
+        pagePositions.push({
+            id: {{ p.id }},
+            title: "{{ p.title|escapejs }}",
+            description: "{{ p.description|escapejs }}",
+            keywords: [{% for kw in p.get_keywords %}"{{ kw|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}],
+            created_at: "{{ p.created_at|date:'Y-m-d' }}",
+        });
+        {% endfor %}
+        positions.value = pagePositions;
+
+        function openUpload(pos) {
+            uploadPosId.value = pos.id;
+            uploadPosTitle.value = pos.title;
+            applicantName.value = '';
+            applicantEmail.value = '';
+            applicantPhone.value = '';
+            selectedFile.value = null;
+            showUpload.value = true;
+        }
+
+        function handleFileSelect(e) {
+            selectedFile.value = e.target.files[0];
+        }
+
+        function doUpload() {
+            if (!selectedFile.value || !applicantName.value) return;
+            const fd = new FormData();
+            fd.append('name', applicantName.value);
+            fd.append('email', applicantEmail.value);
+            fd.append('phone', applicantPhone.value);
+            fd.append('resume', selectedFile.value);
+
+            fetch(`/positions/${uploadPosId.value}/apply/`, {
+                method: 'POST',
+                body: fd,
+                headers: { 'X-CSRFToken': getCookie('csrftoken') }
+            })
+            .then(r => r.json())
+            .then(d => {
+                resultData.value = d;
+                showUpload.value = false;
+                showResult.value = true;
+                if (d.success) {
+                    setTimeout(() => {
+                        showResult.value = false;
+                        window.location.reload();
+                    }, 2000);
+                }
+            })
+            .catch(e => {
+                resultData.value = { success: false, error: '网络错误' };
+                showUpload.value = false;
+                showResult.value = true;
+            });
+        }
+
+        function getCookie(name) {
+            const v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
+            return v ? v[2] : '';
+        }
+
+        onMounted(() => { /* positions loaded from server-side context */ });
+
+        return {
+            positions, showUpload, showResult, uploadPosTitle,
+            applicantName, applicantEmail, applicantPhone,
+            selectedFile, fileInput, resultData,
+            openUpload, handleFileSelect, doUpload
+        };
+    }
+});
+app.use(ElementPlus);
+app.mount('#app');
+</script>
+</body>
+</html>
